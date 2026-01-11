@@ -95,6 +95,7 @@ Desktop.ini
 
 # Data files
 *.csv
+!sample_pricing_data.csv  # 允許示例數據文件
 *.xlsx
 *.json
 data/
