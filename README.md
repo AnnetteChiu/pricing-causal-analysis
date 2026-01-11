@@ -34,6 +34,9 @@ pip install -e .
 # 快速演示（推薦新手）
 python demo_analysis.py
 
+# 真實數據分析演示 🆕
+python real_data_analysis.py
+
 # 完整分析（包含所有方法）
 python run_analysis.py
 
@@ -41,7 +44,34 @@ python run_analysis.py
 python pricing_causal_analysis.py
 ```
 
+### 快速上手示例
+
+```python
+# 方法1: 使用模擬數據
+from pricing_causal_analysis import PricingCausalAnalysis
+analyzer = PricingCausalAnalysis()
+data = analyzer.generate_synthetic_data(n_samples=5000)
+analyzer.randomized_experiment_analysis()
+print(f"降價效果: {analyzer.results['experiment_analysis']['ate_sales']:.0f} 單位銷量增加")
+
+# 方法2: 使用真實數據 🆕
+from real_data_analysis import analyze_real_data
+column_mapping = {
+    '你的價格列名': 'price',
+    '你的銷量列名': 'sales_volume',
+    '你的日期列名': 'date'
+}
+analyzer, data = analyze_real_data('your_data.csv', column_mapping)
+```
+
 ## 功能特點 Features
+
+### 🆕 真實數據支持
+- **智能數據加載**: 支持CSV、Excel文件，自動處理編碼問題
+- **列名自動識別**: 智能建議列名映射，快速適配你的數據
+- **完整預處理流程**: 缺失值處理、異常值檢測、數據驗證
+- **自動變數創建**: 智能生成處理變數和控制變數
+- **一鍵分析**: 從原始數據到分析報告的完整流程
 
 ### 基礎因果推論方法
 - **隨機實驗分析 (A/B測試)**: 最可靠的因果識別方法
@@ -196,9 +226,12 @@ pricing-causal-analysis/
 ├── 📊 pricing_causal_analysis.py    # 基礎因果推論分析
 ├── 🔬 advanced_pricing_methods.py   # 進階分析方法  
 ├── 🎯 demo_analysis.py              # 快速演示腳本
+├── 🆕 real_data_analysis.py         # 真實數據分析演示
+├── 🆕 real_data_loader.py           # 真實數據加載器
 ├── 🚀 run_analysis.py              # 完整分析運行器
 ├── 📋 requirements.txt             # 依賴列表
 ├── 📚 使用指南.md                  # 詳細使用指南
+├── 🆕 真實數據使用指南.md          # 真實數據使用說明
 ├── 🧪 tests/                      # 測試文件
 ├── 📄 README.md                   # 項目說明
 └── ⚙️  setup.py                   # 安裝配置
