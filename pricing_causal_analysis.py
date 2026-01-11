@@ -21,12 +21,51 @@ plt.rcParams['axes.unicode_minus'] = False
 class PricingCausalAnalysis:
     """定價策略因果推論分析類"""
     
-    def __init__(self):
-        self.data = None
+    def __init__(self, data=None):
+        self.data = data
         self.results = {}
+        self.is_real_data = data is not None
+    
+    def load_real_data(self, data_source, **kwargs):
+        """
+        加載真實數據
+        
+        Parameters:
+        -----------
+        data_source : str or pd.DataFrame
+            數據源，可以是文件路徑或DataFrame
+        **kwargs : dict
+            額外參數
+        """
+        from real_data_loader import RealDataLoader
+        
+        if isinstance(data_source, pd.DataFrame):
+            self.data = data_source
+            self.is_real_data = True
+            print(f"✅ 已加載DataFrame數據，形狀: {data_source.shape}")
+        elif isinstance(data_source, str):
+            loader = RealDataLoader()
+            
+            if data_source.endswith('.csv'):
+                self.data = loader.load_csv_data(data_source, **kwargs)
+            elif data_source.endswith(('.xlsx', '.xls')):
+                self.data = loader.load_excel_data(data_source, **kwargs)
+            else:
+                raise ValueError("支持的文件格式: .csv, .xlsx, .xls")
+            
+            self.is_real_data = True
+            print(f"✅ 已加載真實數據，形狀: {self.data.shape}")
+        else:
+            raise ValueError("data_source 必須是文件路徑或DataFrame")
+        
+        return self.data
     
     def generate_synthetic_data(self, n_samples=10000, seed=42):
         """生成模擬的定價數據"""
+        if self.is_real_data:
+            print("⚠️  已有真實數據，跳過模擬數據生成")
+            return self.data
+            
         np.random.seed(seed)
         
         # 基礎特徵
@@ -66,9 +105,13 @@ class PricingCausalAnalysis:
         # 確保銷售量為正數
         data['sales_volume'] = np.maximum(data['sales_volume'], 0)
         
-        # 計算收入和利潤
-        data['revenue'] = data['price'] * data['sales_volume']
-        data['profit'] = data['revenue'] - 50 * data['sales_volume']  # 假設成本為50
+        # 計算收入和利潤（如果不存在的話）
+        if 'revenue' not in self.data.columns:
+            self.data['revenue'] = self.data['price'] * self.data['sales_volume']
+        
+        if 'profit' not in self.data.columns:
+            # 假設成本為價格的50%
+            self.data['profit'] = self.data['revenue'] - self.data['price'] * 0.5 * self.data['sales_volume']
         
         self.data = pd.DataFrame(data)
         return self.data
@@ -100,6 +143,14 @@ class PricingCausalAnalysis:
     def randomized_experiment_analysis(self):
         """隨機實驗分析（A/B測試）"""
         print("\n=== 隨機實驗分析 (A/B測試) ===")
+        
+        # 確保有必要的列
+        if 'revenue' not in self.data.columns:
+            self.data['revenue'] = self.data['price'] * self.data['sales_volume']
+        
+        if 'profit' not in self.data.columns:
+            # 假設成本為價格的50%
+            self.data['profit'] = self.data['revenue'] - self.data['price'] * 0.5 * self.data['sales_volume']
         
         # 分組統計
         treatment_group = self.data[self.data['price_treatment'] == 1]
@@ -134,20 +185,33 @@ class PricingCausalAnalysis:
         """回歸調整分析"""
         print("\n=== 回歸調整分析 ===")
         
-        # 準備特徵
-        features = ['price', 'competitor_price', 'marketing_spend', 'inventory_level']
+        # 準備特徵 - 只使用實際存在的列
+        available_features = []
+        potential_features = ['competitor_price', 'marketing_spend', 'inventory_level', 
+                            'customer_frequency', 'product_avg_price', 'price_relative']
+        
+        for feature in potential_features:
+            if feature in self.data.columns:
+                available_features.append(feature)
+        
+        # 如果沒有額外特徵，至少使用價格
+        if not available_features:
+            available_features = ['price']
+        
+        print(f"使用的特徵: {available_features}")
         
         # 創建虛擬變數
-        season_dummies = pd.get_dummies(self.data['season'], prefix='season')
-        segment_dummies = pd.get_dummies(self.data['customer_segment'], prefix='segment')
+        dummy_columns = []
+        for col in ['season', 'customer_segment']:
+            if col in self.data.columns:
+                dummies = pd.get_dummies(self.data[col], prefix=col)
+                dummy_columns.append(dummies)
         
-        X = pd.concat([
-            self.data[features],
-            self.data[['price_treatment']],
-            season_dummies,
-            segment_dummies
-        ], axis=1)
+        # 組合特徵
+        feature_list = [self.data[available_features], self.data[['price_treatment']]]
+        feature_list.extend(dummy_columns)
         
+        X = pd.concat(feature_list, axis=1)
         y = self.data['sales_volume']
         
         # 線性回歸
@@ -179,16 +243,31 @@ class PricingCausalAnalysis:
         """傾向得分分析"""
         print("\n=== 傾向得分分析 ===")
         
-        # 準備特徵用於傾向得分估計
-        features = ['competitor_price', 'marketing_spend', 'inventory_level']
-        season_dummies = pd.get_dummies(self.data['season'], prefix='season')
-        segment_dummies = pd.get_dummies(self.data['customer_segment'], prefix='segment')
+        # 準備特徵用於傾向得分估計 - 只使用實際存在的列
+        available_features = []
+        potential_features = ['competitor_price', 'marketing_spend', 'inventory_level',
+                            'customer_frequency', 'product_avg_price']
         
-        X_ps = pd.concat([
-            self.data[features],
-            season_dummies,
-            segment_dummies
-        ], axis=1)
+        for feature in potential_features:
+            if feature in self.data.columns:
+                available_features.append(feature)
+        
+        # 如果沒有額外特徵，使用價格
+        if not available_features:
+            available_features = ['price']
+        
+        # 創建虛擬變數
+        dummy_columns = []
+        for col in ['season', 'customer_segment']:
+            if col in self.data.columns:
+                dummies = pd.get_dummies(self.data[col], prefix=col)
+                dummy_columns.append(dummies)
+        
+        # 組合特徵
+        feature_list = [self.data[available_features]]
+        feature_list.extend(dummy_columns)
+        
+        X_ps = pd.concat(feature_list, axis=1)
         
         # 估計傾向得分
         from sklearn.linear_model import LogisticRegression
@@ -206,18 +285,23 @@ class PricingCausalAnalysis:
         for _, treated in treatment_data.iterrows():
             # 找到最接近的對照組
             distances = np.abs(control_data['propensity_score'] - treated['propensity_score'])
-            closest_idx = distances.idxmin()
-            matched_pairs.append((treated['customer_id'], closest_idx))
+            if len(distances) > 0:
+                closest_idx = distances.idxmin()
+                matched_pairs.append((treated.name, closest_idx))  # 使用索引而不是customer_id
         
         # 計算匹配後的處理效應
         matched_treatment_sales = []
         matched_control_sales = []
         
-        for treated_id, control_id in matched_pairs:
-            treated_sales = self.data[self.data['customer_id'] == treated_id]['sales_volume'].iloc[0]
-            control_sales = self.data[self.data['customer_id'] == control_id]['sales_volume'].iloc[0]
-            matched_treatment_sales.append(treated_sales)
-            matched_control_sales.append(control_sales)
+        for treated_idx, control_idx in matched_pairs:
+            try:
+                treated_sales = self.data.loc[treated_idx, 'sales_volume']
+                control_sales = self.data.loc[control_idx, 'sales_volume']
+                matched_treatment_sales.append(treated_sales)
+                matched_control_sales.append(control_sales)
+            except (IndexError, KeyError):
+                # 如果找不到匹配的記錄，跳過
+                continue
         
         ps_ate = np.mean(matched_treatment_sales) - np.mean(matched_control_sales)
         
@@ -237,22 +321,55 @@ class PricingCausalAnalysis:
         # 按客戶群體分析價格彈性
         elasticities = {}
         
+        # 檢查是否有客戶分群
+        if 'customer_segment' not in self.data.columns:
+            # 如果沒有分群，創建一個默認分群
+            self.data['customer_segment'] = '全體客戶'
+        
         for segment in self.data['customer_segment'].unique():
             segment_data = self.data[self.data['customer_segment'] == segment]
             
-            # 計算價格彈性 (% change in quantity / % change in price)
-            X = np.log(segment_data['price']).values.reshape(-1, 1)
-            y = np.log(segment_data['sales_volume']).values
+            # 確保有足夠的數據點
+            if len(segment_data) < 10:
+                print(f"   {segment}: 數據點不足，跳過")
+                continue
             
-            model = LinearRegression()
-            model.fit(X, y)
+            # 過濾掉零值和負值
+            valid_data = segment_data[
+                (segment_data['price'] > 0) & 
+                (segment_data['sales_volume'] > 0)
+            ]
             
-            elasticity = model.coef_[0]
-            elasticities[segment] = elasticity
+            if len(valid_data) < 10:
+                print(f"   {segment}: 有效數據點不足，跳過")
+                continue
             
-            print(f"{segment}客戶群體價格彈性: {elasticity:.4f}")
+            try:
+                # 計算價格彈性 (% change in quantity / % change in price)
+                X = np.log(valid_data['price']).values.reshape(-1, 1)
+                y = np.log(valid_data['sales_volume']).values
+                
+                # 檢查是否有無限值或NaN
+                if np.any(np.isinf(X)) or np.any(np.isnan(X)) or np.any(np.isinf(y)) or np.any(np.isnan(y)):
+                    print(f"   {segment}: 數據包含無效值，跳過")
+                    continue
+                
+                model = LinearRegression()
+                model.fit(X, y)
+                
+                elasticity = model.coef_[0]
+                elasticities[segment] = elasticity
+                
+                print(f"   {segment}客戶群體價格彈性: {elasticity:.4f}")
+                
+            except Exception as e:
+                print(f"   {segment}: 計算失敗 ({str(e)})，跳過")
+                continue
         
-        self.results['price_elasticity'] = elasticities
+        if elasticities:
+            self.results['price_elasticity'] = elasticities
+        else:
+            print("   無法計算價格彈性，可能數據不適合此分析")
     
     def visualize_results(self):
         """結果可視化"""
